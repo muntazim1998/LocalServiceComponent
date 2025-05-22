@@ -1,0 +1,132 @@
+﻿<!DOCTYPE html>
+<html>
+<head>
+    <title>Camera Stream Viewer</title>
+    <script src="/jsmpeg.min.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 20px;
+            background-color: #f5f5f5;
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+
+        .stream-container {
+            display: inline-block;
+            margin: 15px;
+            padding: 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            vertical-align: top;
+        }
+
+            .stream-container h2 {
+                margin-top: 0;
+                color: #444;
+            }
+
+        canvas {
+            background: #000;
+            display: block;
+        }
+
+        .status {
+            margin-top: 10px;
+            padding: 5px;
+            border-radius: 4px;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .connecting {
+            background: #fff3cd;
+            color: #856404;
+        }
+
+        .connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+        }
+    </style>
+</head>
+<body>
+    <h1>Camera Stream Viewer</h1>
+
+    <div id="streams-container">
+        <!-- Streams will be added here dynamically -->
+    </div>
+
+    <script>
+        // Camera configuration
+        var Defaultport = 9898;
+        const cameras = [
+            { name: 'Camera 1', route: '/cam1' },
+            { name: 'Camera 2', route: '/cam2' },
+            { name: 'Camera 3', route: '/cam3'},
+            { name: 'Camera 4', route: '/cam4'},
+            { name: 'Camera 5', route: '/cam5'},
+            { name: 'Camera 6', route: '/cam6'},
+        ];
+
+        // Create player for each camera
+        function createStreamPlayers() {
+            const container = document.getElementById('streams-container');
+
+            cameras.forEach(cam => {
+                const streamDiv = document.createElement('div');
+                streamDiv.className = 'stream-container';
+                streamDiv.id = `container-${cam.name.replace(/\s+/g, '-').toLowerCase()}`;
+
+                streamDiv.innerHTML = `
+                    <h2>${cam.name}</h2>
+                    <canvas id="canvas-${cam.name.replace(/\s+/g, '-').toLowerCase()}"></canvas>
+                    <div id="status-${cam.name.replace(/\s+/g, '-').toLowerCase()}" class="status connecting">
+                        Connecting to ${cam.name}...
+                    </div>
+                `;
+
+                container.appendChild(streamDiv);
+
+                const canvas = document.getElementById(`canvas-${cam.name.replace(/\s+/g, '-').toLowerCase()}`);
+                const statusElement = document.getElementById(`status-${cam.name.replace(/\s+/g, '-').toLowerCase()}`);
+
+                try {
+                    const player = new JSMpeg.Player(`ws://${window.location.hostname}:${Defaultport}${cam.route}`, {
+                        canvas: canvas,
+                        autoplay: true,
+                        audio: false,
+                        onPlay: () => {
+                            statusElement.textContent = `${cam.name} - Connected`;
+                            statusElement.className = 'status connected';
+                        },
+                        onError: (error) => {
+                            statusElement.textContent = `${cam.name} - Error: ${error}`;
+                            statusElement.className = 'status error';
+                        },
+                        onStalled: () => {
+                            statusElement.textContent = `${cam.name} - Stalled`;
+                            statusElement.className = 'status error';
+                        }
+                    });
+                } catch (e) {
+                    statusElement.textContent = `${cam.name} - Connection failed: ${e.message}`;
+                    statusElement.className = 'status error';
+                }
+            });
+        }
+
+        // Initialize when page loads
+        window.onload = createStreamPlayers;
+    </script>
+</body>
+</html>
