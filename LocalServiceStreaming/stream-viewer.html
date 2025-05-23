@@ -4,43 +4,70 @@
     <title>Camera Stream Viewer</title>
     <script src="/jsmpeg.min.js"></script>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+
         body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
             background-color: #f5f5f5;
         }
 
         h1 {
             color: #333;
             text-align: center;
+            padding: 20px 10px;
+            background-color: #fff;
+            margin: 0 0 20px 0;
+            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+        }
+
+        #streams-container {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            padding: 0 20px 40px;
         }
 
         .stream-container {
-            display: inline-block;
-            margin: 15px;
+            background: #fff;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
             padding: 15px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            vertical-align: top;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            transition: all 0.3s ease;
         }
 
+            .stream-container.large {
+                grid-column: span 3;
+            }
+
             .stream-container h2 {
-                margin-top: 0;
-                color: #444;
+                margin: 0 0 10px;
+                color: #222;
+                font-size: 1.2em;
+                text-align: center;
             }
 
         canvas {
             background: #000;
-            display: block;
+            width: 100%;
+            height: auto;
+            border-radius: 6px;
         }
 
         .status {
             margin-top: 10px;
-            padding: 5px;
-            border-radius: 4px;
+            padding: 8px 12px;
+            border-radius: 6px;
             text-align: center;
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 0.95em;
+            width: 100%;
         }
 
         .connecting {
@@ -57,6 +84,34 @@
             background: #f8d7da;
             color: #721c24;
         }
+
+        .toggle-button {
+            margin-top: 10px;
+            padding: 6px 12px;
+            font-size: 0.9em;
+            background: #007bff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+            .toggle-button:hover {
+                background: #0056b3;
+            }
+
+        @media (max-width: 1000px) {
+            #streams-container {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (max-width: 600px) {
+            #streams-container {
+                grid-template-columns: 1fr;
+            }
+        }
     </style>
 </head>
 <body>
@@ -67,37 +122,39 @@
     </div>
 
     <script>
-        // Camera configuration
         var Defaultport = 9898;
         const cameras = [
             { name: 'Camera 1', route: '/cam1' },
             { name: 'Camera 2', route: '/cam2' },
-            { name: 'Camera 3', route: '/cam3'},
-            { name: 'Camera 4', route: '/cam4'},
-            { name: 'Camera 5', route: '/cam5'},
+            { name: 'Camera 3', route: '/cam3' },
+            { name: 'Camera 4', route: '/cam4' },
+            { name: 'Camera 5', route: '/cam5' },
+            { name: 'Camera 6', route: '/cam6' },
         ];
 
-        // Create player for each camera
         function createStreamPlayers() {
             const container = document.getElementById('streams-container');
 
             cameras.forEach(cam => {
+                const camId = cam.name.replace(/\s+/g, '-').toLowerCase();
+
                 const streamDiv = document.createElement('div');
                 streamDiv.className = 'stream-container';
-                streamDiv.id = `container-${cam.name.replace(/\s+/g, '-').toLowerCase()}`;
+                streamDiv.id = `container-${camId}`;
 
                 streamDiv.innerHTML = `
-                    <h2>${cam.name}</h2>
-                    <canvas id="canvas-${cam.name.replace(/\s+/g, '-').toLowerCase()}"></canvas>
-                    <div id="status-${cam.name.replace(/\s+/g, '-').toLowerCase()}" class="status connecting">
-                        Connecting to ${cam.name}...
-                    </div>
-                `;
+                        <h2>${cam.name}</h2>
+                        <canvas id="canvas-${camId}"></canvas>
+                        <div id="status-${camId}" class="status connecting">
+                            Connecting to ${cam.name}...
+                        </div>
+                        <button class="toggle-button" id="btn-${camId}" onclick="toggleSize('${camId}')">Maximize</button>
+                    `;
 
                 container.appendChild(streamDiv);
 
-                const canvas = document.getElementById(`canvas-${cam.name.replace(/\s+/g, '-').toLowerCase()}`);
-                const statusElement = document.getElementById(`status-${cam.name.replace(/\s+/g, '-').toLowerCase()}`);
+                const canvas = document.getElementById(`canvas-${camId}`);
+                const statusElement = document.getElementById(`status-${camId}`);
 
                 try {
                     const player = new JSMpeg.Player(`ws://${window.location.hostname}:${Defaultport}${cam.route}`, {
@@ -124,7 +181,15 @@
             });
         }
 
-        // Initialize when page loads
+        function toggleSize(camId) {
+            const container = document.getElementById(`container-${camId}`);
+            const button = document.getElementById(`btn-${camId}`);
+            container.classList.toggle('large');
+
+            const isLarge = container.classList.contains('large');
+            button.textContent = isLarge ? 'Minimize' : 'Maximize';
+        }
+
         window.onload = createStreamPlayers;
     </script>
 </body>

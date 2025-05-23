@@ -131,16 +131,37 @@ namespace LocalServiceStreaming
             _logger = logger;
             _cams = cams;
         }
+        private async Task InstallFFMpeg()
+        {
+            
+                try
+                {
+                    var file = ConstantVariable.GetFFMPegPath();
+                    var exe = ConstantVariable.FFMPegPath = Path.Combine(file, "ffmpeg.exe");
+                    if (File.Exists(exe))
+                        return;
+                    using (HttpClient client = new HttpClient())
+                    using (var response = await client.GetAsync("https://www.dropbox.com/scl/fi/obk7dnwjsm903dy04secd/ffmpeg.exe?rlkey=fow2d3pgdm14oc8nyvz6hb33o&st=zmr46mwi&dl=1"))
+                    using (var fs = new FileStream(exe, FileMode.Create))
+                    {
+                        await response.Content.CopyToAsync(fs);
+                    }
+                }
+                catch (Exception ex)
+                {
+                }
+        }
 
         protected override async Task ExecuteAsync(CancellationToken stoppingToken)
         {
             try
             {
+               await InstallFFMpeg();
                 var cams = new[]
                 {
                     new CameraStream {
                         Name = "cam1",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/201/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/202/",
                         Route = "/cam1"
                     },
                     new CameraStream {
@@ -150,12 +171,12 @@ namespace LocalServiceStreaming
                     },
                     new CameraStream {
                         Name = "cam3",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/301/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/302/",
                         Route = "/cam3"
                     },
                      new CameraStream {
                         Name = "cam4",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/201/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/202/",
                         Route = "/cam4"
                     },
                     new CameraStream {
@@ -163,11 +184,11 @@ namespace LocalServiceStreaming
                         Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/101/",
                         Route = "/cam5"
                     },
-                    //new CameraStream {
-                    //    Name = "cam6",
-                    //    Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/301/",
-                    //    Route = "/cam6"
-                    //},
+                    new CameraStream {
+                        Name = "cam6",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/302/",
+                        Route = "/cam6"
+                    },
                     // new CameraStream {
                     //    Name = "cam7",
                     //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/201/",
@@ -241,20 +262,28 @@ namespace LocalServiceStreaming
         static void StartFFmpegStream(CameraStream cam)
         {
             // URL-encode the password and use TCP transport
-            var encodedUrl = cam.Url;//.Replace("@", "%40");
+            var encodedUrl = cam.Url;
+
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //      "-f mpegts -codec:v mpeg1video " +
+            //      "-q:v 5 -r 25 -bf 0 " +
+            //      "-s 1280x720 " +
+            //      "-loglevel warning " +
+            //      "-";
 
             var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-                             "-f mpegts -codec:v mpeg1video " +
-                             "-q:v 5 -r 25 -bf 0 " +
-                             "-s 1280x720 " +
-                             "-loglevel warning " +
-                             "-";
+                 "-f mpegts -codec:v mpeg1video -q:v 6 -r 20 -bf 0 -s 1280x720 -threads 1 -loglevel warning -";
+
+
+            //var ffmpegArgs = $"-rtsp_transport tcp -i \"{encodedUrl}\" " +
+            //        "-f mpegts -codec:v h264_nvenc -preset fast -b:v 2M " +
+            //        "-r 15 -s 640x360 -loglevel warning -";
 
             cam.FfmpegProcess = new Process
             {
                 StartInfo = new ProcessStartInfo
                 {
-                    FileName = "ffmpeg",
+                    FileName = ConstantVariable.FFMPegPath,
                     Arguments = ffmpegArgs,
                     UseShellExecute = false,
                     RedirectStandardOutput = true,
