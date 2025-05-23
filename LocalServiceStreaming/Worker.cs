@@ -1,4 +1,4 @@
-using WebSocketSharp.Server;
+﻿using WebSocketSharp.Server;
 using System.Net;
 using System.Diagnostics;
 using System.Text;
@@ -66,7 +66,7 @@ namespace LocalServiceStreaming
         {
             // Not used for HTTP requests
         }
-
+       
         // Add this to your Program.cs
         public static void StartHttpServer(int port)
         {
@@ -189,38 +189,6 @@ namespace LocalServiceStreaming
                         Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/302/",
                         Route = "/cam6"
                     },
-                    // new CameraStream {
-                    //    Name = "cam7",
-                    //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/201/",
-                    //    Route = "/cam7"
-                    //},
-                    //new CameraStream {
-                    //    Name = "cam8",
-                    //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/101/",
-                    //    Route = "/cam8"
-                    //},
-                    //new CameraStream {
-                    //    Name = "cam9",
-                    //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/301/",
-                    //    Route = "/cam9"
-                    //},
-                    // new CameraStream {
-                    //    Name = "cam10",
-                    //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/201/",
-                    //    Route = "/cam10"
-                    //},
-                    //new CameraStream {
-                    //    Name = "cam11",
-                    //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/101/",
-                    //    Port = 10009,
-                    //    Route = "/cam11"
-                    //},
-                    //new CameraStream {
-                    //    Name = "cam12",
-                    //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/301/",
-                    //    Port = 10010,
-                    //    Route = "/cam12"
-                    //}
                 };
 
                 _cams.AddRange(cams);
@@ -238,9 +206,13 @@ namespace LocalServiceStreaming
 
                     _webSocketServer.AddWebSocketService<StreamSocket>(cam.Route, socket =>
                     {
+                        socket.OriginValidator = origin =>
+                        {
+                            // Allow all origins (⚠️ only do this in trusted environments)
+                            return true;
+                        };
                         socket.Initialize(cam);
                     });
-
                     _logger.LogInformation($"Started {cam.Name} on ws://localhost:{websocketPort}{cam.Route}");
                 }
 
@@ -264,17 +236,30 @@ namespace LocalServiceStreaming
             // URL-encode the password and use TCP transport
             var encodedUrl = cam.Url;
 
-            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-            //      "-f mpegts -codec:v mpeg1video " +
-            //      "-q:v 5 -r 25 -bf 0 " +
-            //      "-s 1280x720 " +
-            //      "-loglevel warning " +
-            //      "-";
-
             var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-                 "-f mpegts -codec:v mpeg1video -q:v 6 -r 20 -bf 0 -s 1280x720 -threads 1 -loglevel warning -";
+                              "-f mpegts -codec:v mpeg1video " +
+                              "-q:v 5 -r 25 -bf 0 " +
+                              "-s 1280x720 " +
+                              "-loglevel warning " +
+                              "-";
+
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //                 "-f mpegts -codec:v mpeg1video " +
+            //                 "-q:v 1 -r 30 -bf 2 " +
+            //                 "-g 60 -b:v 5000k -maxrate 5000k -bufsize 10000k " +
+            //                 "-s 1920x1080 " +
+            //                 "-preset veryfast " +
+            //                 "-loglevel warning -";
 
 
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //     "-f mpegts -codec:v mpeg1video -q:v 6 -r 20 -bf 0 -s 1280x720 -threads 1 -loglevel warning -";
+
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1280x720 -threads 2 -loglevel error -";
+
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1920x1080 -loglevel error -";
             //var ffmpegArgs = $"-rtsp_transport tcp -i \"{encodedUrl}\" " +
             //        "-f mpegts -codec:v h264_nvenc -preset fast -b:v 2M " +
             //        "-r 15 -s 640x360 -loglevel warning -";
