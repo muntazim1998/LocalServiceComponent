@@ -140,34 +140,34 @@ namespace LocalServiceStreaming
                 {
                     new CameraStream {
                         Name = "cam1",
-                        Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/201/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/201/",
                         Route = "/cam1"
                     },
                     new CameraStream {
                         Name = "cam2",
-                        Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/101/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/101/",
                         Route = "/cam2"
                     },
                     new CameraStream {
                         Name = "cam3",
-                        Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/301/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/301/",
                         Route = "/cam3"
                     },
                      new CameraStream {
                         Name = "cam4",
-                        Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/201/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/201/",
                         Route = "/cam4"
                     },
                     new CameraStream {
                         Name = "cam5",
-                        Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/101/",
+                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/101/",
                         Route = "/cam5"
                     },
-                    new CameraStream {
-                        Name = "cam6",
-                        Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/301/",
-                        Route = "/cam6"
-                    },
+                    //new CameraStream {
+                    //    Name = "cam6",
+                    //    Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/301/",
+                    //    Route = "/cam6"
+                    //},
                     // new CameraStream {
                     //    Name = "cam7",
                     //    Url = "rtsp://admin:tech@9900@192.168.0.211:554/Streaming/Channels/201/",
