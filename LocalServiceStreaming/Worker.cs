@@ -20,7 +20,7 @@ namespace LocalServiceStreaming
     public class StreamSocket : WebSocketBehavior
     {
         private CameraStream _camera;
-
+        private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
         public void Initialize(CameraStream camera)
         {
             _camera = camera;
@@ -28,7 +28,7 @@ namespace LocalServiceStreaming
 
         protected override void OnOpen()
         {
-            Console.WriteLine($"Client connected to {_camera.Name}");
+            _logger.Info($"Client connected to {_camera.Name}");
             Task.Run(() => PipeFfmpegToWebSocket());
         }
 
@@ -53,13 +53,13 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error piping {_camera.Name} stream: {ex.Message}");
+                _logger.Error($"Error piping {_camera.Name} stream: {ex.Message}");
             }
         }
 
         protected override void OnClose(CloseEventArgs e)
         {
-            Console.WriteLine($"Client disconnected from {_camera.Name}");
+            _logger.Info($"Client disconnected from {_camera.Name}");
         }
     }
 
@@ -223,7 +223,7 @@ namespace LocalServiceStreaming
 
 
                 //for playback
-                var playBackUri = $"rtsp://admin:\"tech@9900\"@106.51.129.154:554/Streaming/tracks/101?starttime=20250522T100000Z";
+                var playBackUri = $"rtsp://admin:\"tech@9900\"@106.51.129.154:554/Streaming/tracks/101?starttime=20250522T100000Z&endtime=20250523T110000Z";
                 var cam1 = new CameraStream
                 {
                     Name = "Playback",
@@ -240,6 +240,7 @@ namespace LocalServiceStreaming
                     socket.Initialize(cam1);
                 });
 
+                _cams.Add(cam1);
                 _webSocketServer.Start();
                 _logger.Info($"WebSocket Server started on port {websocketPort}");
 
@@ -312,12 +313,12 @@ namespace LocalServiceStreaming
                 if (!string.IsNullOrEmpty(e.Data) &&
                     !e.Data.Contains("deprecated pixel format") &&
                     !e.Data.Contains("Last message repeated"))
-                    Console.WriteLine($"[FFmpeg] {cam.Name}: {e.Data}");
+                    _logger.Error($"[FFmpeg] {cam.Name}: {e.Data}");
             };
 
             cam.FfmpegProcess.Exited += (sender, e) =>
             {
-                Console.WriteLine($"[FFmpeg] {cam.Name} process exited with code {cam.FfmpegProcess.ExitCode}");
+                _logger.Error($"[FFmpeg] {cam.Name} process exited with code {cam.FfmpegProcess.ExitCode}");
                 // Optional: Add restart logic here
             };
 
@@ -328,7 +329,7 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[Error] Failed to start {cam.Name}: {ex.Message}");
+                _logger.Error($"[Error] Failed to start {cam.Name}: {ex.Message}");
             }
         }
         public override async Task StopAsync(CancellationToken cancellationToken)
@@ -345,11 +346,11 @@ namespace LocalServiceStreaming
                 try
                 {
                     cam.FfmpegProcess?.Kill();
-                    Console.WriteLine($"Stopped {cam.Name}");
+                    _logger.Info($"Stopped {cam.Name}");
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error stopping {cam.Name}: {ex.Message}");
+                    _logger.Error($"Error stopping {cam.Name}: {ex.Message}");
                 }
             }
             await base.StopAsync(cancellationToken);
@@ -369,7 +370,7 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"GPU check failed: {ex.Message}");
+                _logger.Error($"GPU check failed: {ex.Message}");
             }
 
             return false;
@@ -380,14 +381,14 @@ namespace LocalServiceStreaming
 
             if (useGpu)
             {
-                Console.WriteLine("NVIDIA GPU found — using GPU acceleration.");
+                _logger.Info("NVIDIA GPU found — using GPU acceleration.");
                 return $"-hwaccel cuda -rtsp_transport tcp -re -i \"{encodedUrl}\" " +
                        "-f mpegts -codec:v h264_nvenc -pix_fmt yuv420p -preset fast " +
                        $"-r 25 -bf 0 -s {pixelFormat} -loglevel warning -";
             }
             else
             {
-                Console.WriteLine("No NVIDIA GPU — using software encoding.");
+                _logger.Info("No NVIDIA GPU — using software encoding.");
                 return $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
                        "-f mpegts -codec:v mpeg1video -q:v 5 -r 25 -bf 0 " +
                        $"-s {pixelFormat} -loglevel warning -";
