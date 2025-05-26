@@ -8,6 +8,7 @@ namespace LocalServiceStreaming
 {
     public class ConstantVariable
     {
+        public static int BoundCapacity = 6;
         public static string FFMPegPath { get; set; }
 
         public static string GetFFMPegPath()

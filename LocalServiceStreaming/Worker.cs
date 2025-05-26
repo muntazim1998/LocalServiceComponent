@@ -3,6 +3,9 @@ using System.Net;
 using System.Diagnostics;
 using System.Text;
 using WebSocketSharp;
+using System.Management;
+using Microsoft.VisualBasic;
+using System.Data;
 namespace LocalServiceStreaming
 {
     public class CameraStream
@@ -122,16 +125,18 @@ namespace LocalServiceStreaming
 
     public class Worker : BackgroundService
     {
-        private readonly ILogger<Worker> _logger;
+        //private readonly ILogger<Worker> _logger;
+        private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
         private WebSocketServer _webSocketServer;
         private readonly List<CameraStream> _cams;
-
-        public Worker(ILogger<Worker> logger, List<CameraStream> cams)
+        private SemaphoreSlim SemaphoreSlim = new SemaphoreSlim(ConstantVariable.BoundCapacity, ConstantVariable.BoundCapacity);
+        public Worker(List<CameraStream> cams)
         {
-            _logger = logger;
+            // _logger = logger;
             _cams = cams;
         }
         private async Task InstallFFMpeg()
+        
         {
             
                 try
@@ -156,7 +161,7 @@ namespace LocalServiceStreaming
         {
             try
             {
-               await InstallFFMpeg();
+                await InstallFFMpeg();
                 var cams = new[]
                 {
                     new CameraStream {
@@ -194,7 +199,7 @@ namespace LocalServiceStreaming
                 _cams.AddRange(cams);
                 // Start HTTP server
                 HttpRequestHandler.StartHttpServer(8080);
-                _logger.LogInformation("HTTP Server started on port 8080");
+                _logger.Info("HTTP Server started on port 8080");
 
                 // Start WebSocket server
                 int websocketPort = 9898;
@@ -213,13 +218,31 @@ namespace LocalServiceStreaming
                         };
                         socket.Initialize(cam);
                     });
-                    _logger.LogInformation($"Started {cam.Name} on ws://localhost:{websocketPort}{cam.Route}");
+                    _logger.Info($"Started {cam.Name} on ws://localhost:{websocketPort}{cam.Route}");
                 }
 
-                _webSocketServer.Start();
-                _logger.LogInformation($"WebSocket Server started on port {websocketPort}");
 
-                // Keep the service running
+                //for playback
+                var playBackUri = $"rtsp://admin:\"tech@9900\"@106.51.129.154:554/Streaming/tracks/101?starttime=20250522T100000Z";
+                var cam1 = new CameraStream
+                {
+                    Name = "Playback",
+                    Url = playBackUri,
+                    Route = "/playback"
+                };
+                StartFFmpegStream(cam1);
+                _webSocketServer.AddWebSocketService<StreamSocket>(cam1.Route, socket =>
+                {
+                    socket.OriginValidator = origin =>
+                    {
+                        return true;
+                    };
+                    socket.Initialize(cam1);
+                });
+
+                _webSocketServer.Start();
+                _logger.Info($"WebSocket Server started on port {websocketPort}");
+
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     await Task.Delay(1000, stoppingToken);
@@ -227,56 +250,62 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error starting servers");
+                _logger.Error(ex, "Error starting servers");
                 throw;
             }
         }
-        static void StartFFmpegStream(CameraStream cam)
+
+
+
+        internal static void StartFFmpegStream(CameraStream cam, bool isPlayback = false)
         {
             // URL-encode the password and use TCP transport
             var encodedUrl = cam.Url;
+            var ffmpegArgs = string.Empty;
+            if (!isPlayback)
+                ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+                             "-f mpegts -codec:v mpeg1video " +
+                             "-q:v 5 -r 23.976 -bf 0 " +
+                             "-s 1280x720 " +
+                             "-loglevel warning " +
+                             "-";
+            else
+                ffmpegArgs = $"-i \"{encodedUrl}\" -f mpegts -codec:v mpeg1video -q:v 5 -r 24 -bf 0 -s 1280x720 -";
 
-            var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-                              "-f mpegts -codec:v mpeg1video " +
-                              "-q:v 5 -r 25 -bf 0 " +
-                              "-s 1280x720 " +
-                              "-loglevel warning " +
-                              "-";
-
-            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-            //                 "-f mpegts -codec:v mpeg1video " +
-            //                 "-q:v 1 -r 30 -bf 2 " +
-            //                 "-g 60 -b:v 5000k -maxrate 5000k -bufsize 10000k " +
-            //                 "-s 1920x1080 " +
-            //                 "-preset veryfast " +
-            //                 "-loglevel warning -";
+                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+                //                 "-f mpegts -codec:v mpeg1video " +
+                //                 "-q:v 1 -r 30 -bf 2 " +
+                //                 "-g 60 -b:v 5000k -maxrate 5000k -bufsize 10000k " +
+                //                 "-s 1920x1080 " +
+                //                 "-preset veryfast " +
+                //                 "-loglevel warning -";
 
 
-            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-            //     "-f mpegts -codec:v mpeg1video -q:v 6 -r 20 -bf 0 -s 1280x720 -threads 1 -loglevel warning -";
+                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+                //     "-f mpegts -codec:v mpeg1video -q:v 6 -r 20 -bf 0 -s 1280x720 -threads 1 -loglevel warning -";
 
-            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-            //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1280x720 -threads 2 -loglevel error -";
+                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+                //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1280x720 -threads 2 -loglevel error -";
 
-            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-            //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1920x1080 -loglevel error -";
-            //var ffmpegArgs = $"-rtsp_transport tcp -i \"{encodedUrl}\" " +
-            //        "-f mpegts -codec:v h264_nvenc -preset fast -b:v 2M " +
-            //        "-r 15 -s 640x360 -loglevel warning -";
+                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+                //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1920x1080 -loglevel error -";
+                //var ffmpegArgs = $"-rtsp_transport tcp -i \"{encodedUrl}\" " +
+                //        "-f mpegts -codec:v h264_nvenc -preset fast -b:v 2M " +
+                //        "-r 15 -s 640x360 -loglevel warning -";
 
-            cam.FfmpegProcess = new Process
-            {
-                StartInfo = new ProcessStartInfo
+                cam.FfmpegProcess = new Process
                 {
-                    FileName = ConstantVariable.FFMPegPath,
-                    Arguments = ffmpegArgs,
-                    UseShellExecute = false,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    CreateNoWindow = true
-                },
-                EnableRaisingEvents = true
-            };
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = ConstantVariable.FFMPegPath,
+                        Arguments = ffmpegArgs,
+                        UseShellExecute = false,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        CreateNoWindow = true
+                    },
+                    EnableRaisingEvents = true
+                };
 
             cam.FfmpegProcess.ErrorDataReceived += (sender, e) =>
             {
@@ -304,7 +333,7 @@ namespace LocalServiceStreaming
         }
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            _logger.LogInformation("Stopping servers...");
+            _logger.Info("Stopping servers...");
 
             // Correctly stop the WebSocketServer
             if (_webSocketServer != null && _webSocketServer.IsListening)
@@ -324,6 +353,45 @@ namespace LocalServiceStreaming
                 }
             }
             await base.StopAsync(cancellationToken);
+        }
+
+        public static bool IsNvidiaGpuPresent()
+        {
+            try
+            {
+                using var searcher = new ManagementObjectSearcher("select * from Win32_VideoController");
+                foreach (ManagementObject obj in searcher.Get())
+                {
+                    var name = obj["Name"]?.ToString()?.ToLower();
+                    if (!string.IsNullOrEmpty(name) && name.Contains("nvidia"))
+                        return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"GPU check failed: {ex.Message}");
+            }
+
+            return false;
+        }
+        public static string GetFfmpegArgs(string encodedUrl, string pixelFormat = "1280x720")
+        {
+            bool useGpu = IsNvidiaGpuPresent();
+
+            if (useGpu)
+            {
+                Console.WriteLine("NVIDIA GPU found — using GPU acceleration.");
+                return $"-hwaccel cuda -rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+                       "-f mpegts -codec:v h264_nvenc -pix_fmt yuv420p -preset fast " +
+                       $"-r 25 -bf 0 -s {pixelFormat} -loglevel warning -";
+            }
+            else
+            {
+                Console.WriteLine("No NVIDIA GPU — using software encoding.");
+                return $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+                       "-f mpegts -codec:v mpeg1video -q:v 5 -r 25 -bf 0 " +
+                       $"-s {pixelFormat} -loglevel warning -";
+            }
         }
     }
 }
