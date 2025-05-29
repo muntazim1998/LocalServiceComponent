@@ -1,14 +1,10 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-
-namespace LocalServiceStreaming
+﻿namespace LocalServiceStreaming
 {
     public class ConstantVariable
     {
-        public static int BoundCapacity = 6;
+        public static int BoundCapacity = 1;
+        public static int websocketPort = 9898;
+        public static int LocalPort = 8080;
         public static string FFMPegPath { get; set; }
 
         public static string GetFFMPegPath()

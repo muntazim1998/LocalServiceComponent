@@ -85,17 +85,32 @@
             color: #721c24;
         }
 
-        .toggle-button {
+        .button-group {
             margin-top: 10px;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .toggle-button,
+        .stop-button {
             padding: 6px 12px;
             font-size: 0.9em;
-            background: #007bff;
             color: #fff;
             border: none;
             border-radius: 6px;
             cursor: pointer;
             transition: background 0.2s;
         }
+
+        .toggle-button {
+            background: #007bff; /* Blue */
+        }
+
+        .stop-button {
+            background: #ff7300; /* Orange */
+        }
+
 
             .toggle-button:hover {
                 background: #0056b3;
@@ -124,13 +139,12 @@
     <script>
         var Defaultport = 9898;
         const cameras = [
-            { name: 'Camera 1', route: '/cam1' },
-            { name: 'Camera 2', route: '/cam2' },
-            { name: 'Camera 3', route: '/cam3' },
-            { name: 'Camera 4', route: '/cam4' },
-            { name: 'Camera 5', route: '/cam5' },
-            { name: 'Camera 6', route: '/cam6' },
-            { name: 'Playback', route: '/playback' },
+            { name: 'Camera 1', route: '/101' },
+            //{ name: 'Camera 2', route: '/102' },
+            { name: 'Camera 2', route: '/201' },
+            //{ name: 'Camera 4', route: '/202' },
+            { name: 'Camera 3', route: '/301' },
+            //{ name: 'Playback', route: '/playback' },
         ];
 
         function createStreamPlayers() {
@@ -149,7 +163,10 @@
                         <div id="status-${camId}" class="status connecting">
                             Connecting to ${cam.name}...
                         </div>
-                        <button class="toggle-button" id="btn-${camId}" onclick="toggleSize('${camId}')">Maximize</button>
+                        <div class="button-group">
+                           <button class="toggle-button" id="btn-${camId}" onclick="toggleSize('${camId}')">Maximize</button>
+                           <button class="stop-button" id="stop-${camId}" onclick="stopStream('${cam.route}', '${camId}')">Stop</button>
+                        </div>
                     `;
 
                 container.appendChild(streamDiv);
@@ -175,6 +192,15 @@
                             statusElement.className = 'status error';
                         }
                     });
+                    //setTimeout(() => {
+                    //    if (player.source?.socket) {
+                    //        window[`ws_${camId}`] = player.source.socket;
+                    //        console.log(`WebSocket for ${camId} stored after delay`);
+                    //    } else {
+                    //        console.warn(`WebSocket for ${camId} still not available`);
+                    //    }
+                    //}, 500);
+
                 } catch (e) {
                     statusElement.textContent = `${cam.name} - Connection failed: ${e.message}`;
                     statusElement.className = 'status error';
@@ -190,6 +216,17 @@
             const isLarge = container.classList.contains('large');
             button.textContent = isLarge ? 'Minimize' : 'Maximize';
         }
+
+        function stopStream(route, camId) {
+            const ws = window[`ws_${camId}`];
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send("stop");
+                console.log(`Sent stop command to ${route}`);
+            } else {
+                console.warn(`WebSocket not open for ${route}`);
+            }
+        }
+
 
         window.onload = createStreamPlayers;
     </script>
