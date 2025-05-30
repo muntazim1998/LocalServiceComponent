@@ -3,6 +3,7 @@ using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Management;
 using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 using WebSocketSharp;
 using WebSocketSharp.Server;
@@ -16,6 +17,207 @@ namespace LocalServiceStreaming
         public string Route { get; set; }
         public Process FfmpegProcess { get; set; }
     }
+
+
+    #region System Monitoring Socket
+    public class MonitoringSocket : WebSocketBehavior
+    {
+        private Timer _timer;
+        private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+        private static readonly PerformanceCounter CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
+        private static readonly PerformanceCounter RamCounter = new PerformanceCounter("Memory", "Available MBytes");
+        private static readonly PerformanceCounter DiskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
+        private static string TotalMemory = GetTotalMemory();
+        protected override void OnOpen()
+        {
+            _logger.Info("Client connected to system monitoring");
+            _timer = new Timer(SendSystemInfo, null, 0, 5000); // every 5 seconds
+        }
+
+        private void SendSystemInfo(object state)
+        {
+            try
+            {
+                if (State == WebSocketState.Open)
+                {
+                    var info = GetSystemInfo();
+                    var json = JsonConvert.SerializeObject(info);
+                    _logger.Info($"Sending system info: {json}");
+                    Send(json);
+                }
+            }
+            catch (Exception ex)
+            {
+            }
+        }
+
+        public object GetSystemInfo()
+        {
+            var cpuUsage = GetCpuUsage();
+            var totalRam = GetMemoryUsage();
+            var ffmpegMemoryusage = GetProcessMemoryUsage("ffmpeg");
+            var ffmpegcpu_usage = GetProcessCpuUsage("ffmpeg");
+            return new { totalcpu = cpuUsage, totalram = totalRam , ffmpegMemoryUsage= ffmpegMemoryusage, ffmpegcpuUsage = ffmpegcpu_usage };
+        }
+        private static string GetMemoryUsage()
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(TotalMemory))
+                    TotalMemory = GetTotalMemory();
+
+                var total = float.Parse(TotalMemory);
+                var available = GetAvailableMemory();
+                var usage = ((total - available) / total) * 100;
+
+                return $"{(int)usage}%";
+            }
+            catch
+            {
+                return "20%";
+            }
+        }
+
+        private static string GetCpuUsage()
+        {
+            float cpuUsage = 0;
+
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                CpuCounter.NextValue(); // warm-up
+                Thread.Sleep(500);
+                cpuUsage = CpuCounter.NextValue();
+            }
+            else
+            {
+                try
+                {
+                    var lines = File.ReadAllLines("/proc/stat");
+                    var cpuLine = lines.First(l => l.StartsWith("cpu "));
+                    var values = cpuLine.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
+                                        .Skip(1)
+                                        .Select(ulong.Parse)
+                                        .ToArray();
+
+                    var idle = values[3];
+                    var total = values.Aggregate((a, b) => a + b);
+
+                    cpuUsage = 100.0f - (idle * 100.0f / total);
+                }
+                catch
+                {
+                    return "10%";
+                }
+            }
+            return $"{(int)cpuUsage}%";
+        }
+
+        public static string GetProcessCpuUsage(string processName, int intervalMs = 1000)
+        {
+            try
+            {
+                var processes = Process.GetProcessesByName(processName);
+                if (processes.Length == 0)
+                    return "0%";
+                var totalCpuTimeStart = processes.Sum(p => p.TotalProcessorTime.TotalMilliseconds);
+                var stopwatch = Stopwatch.StartNew();
+                Thread.Sleep(intervalMs); // Wait a bit to measure CPU usage
+                stopwatch.Stop();
+
+                // Refresh processes
+                processes = Process.GetProcessesByName(processName);
+                var totalCpuTimeEnd = processes.Sum(p => p.TotalProcessorTime.TotalMilliseconds);
+
+                var cpuUsedMs = totalCpuTimeEnd - totalCpuTimeStart;
+                var cpuUsageTotal = cpuUsedMs / (Environment.ProcessorCount * stopwatch.ElapsedMilliseconds) * 100;
+
+                return $"{(int)cpuUsageTotal}%";
+
+            }
+            catch { return "10%"; }
+           
+        }
+        public static string GetProcessMemoryUsage(string processName)
+        {
+            try
+            {
+                var processes = Process.GetProcessesByName(processName);
+                if (processes.Length == 0)
+                    return "0%";
+
+                // Total memory used by all matching processes (in bytes)
+                long totalMemoryUsedBytes = processes.Sum(p => p.WorkingSet64);
+                double totalMemoryUsedMB = totalMemoryUsedBytes / (1024.0 * 1024.0);
+
+                return $"{(int)totalMemoryUsedMB}MB";
+            }
+            catch
+            {
+                return "10%";
+            }
+        }
+
+        private static float GetAvailableMemory()
+        {
+            if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            {
+                return RamCounter.NextValue();
+            }
+            else
+            {
+                // Linux implementation using /proc/meminfo
+                try
+                {
+                    var lines = File.ReadAllLines("/proc/meminfo");
+                    var memAvailable = lines.First(l => l.StartsWith("MemAvailable:"));
+                    var kb = long.Parse(memAvailable.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)[1]);
+                    return kb / 1024.0f; // Convert to MB
+                }
+                catch
+                {
+                    return 0;
+                }
+            }
+        }
+        private static string GetTotalMemory()
+        {
+            try
+            {
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+                {
+                    using (var searcher = new ManagementObjectSearcher("SELECT TotalPhysicalMemory FROM Win32_ComputerSystem"))
+                    {
+                        foreach (var obj in searcher.Get())
+                        {
+                            var totalMemoryBytes = Convert.ToInt64(obj["TotalPhysicalMemory"]);
+                            return $"{(totalMemoryBytes / (1024 * 1024)):F2}";
+                        }
+                    }
+                }
+                else
+                {
+                    // Linux implementation
+                    var lines = File.ReadAllLines("/proc/meminfo");
+                    var memTotal = lines.First(l => l.StartsWith("MemTotal:"));
+                    var kb = long.Parse(memTotal.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)[1]);
+                    return $"{(kb / 1024.0f / 1024.0f):F2}"; // Convert to GB
+                }
+            }
+            catch
+            {
+                return "1024";
+            }
+            return "1024";
+        }
+
+        protected override void OnClose(CloseEventArgs e)
+        {
+            Console.WriteLine("Client disconnected from system monitoring");
+            _timer?.Dispose();
+        }
+    }
+    #endregion
+
 
     public class StreamSocket : WebSocketBehavior
     {
@@ -67,7 +269,7 @@ namespace LocalServiceStreaming
                             _logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
                             if (!Worker._cams.Any(c => c.Route == obj.Route))
                             {
-                                Worker.StartWebSocketServer(obj, CancellationToken.None);
+                                Worker.StartWebSocketServer(obj,jsonObject.Resolution, CancellationToken.None);
                                 _semaphoreSlim.Release();
                             }
                             else
@@ -107,6 +309,7 @@ namespace LocalServiceStreaming
                         }
                         else
                         {
+                            _logger.Error($"WebSocket connection closed for {_camera.Name}");
                             break;
                         }
                     }
@@ -120,7 +323,30 @@ namespace LocalServiceStreaming
         protected override void OnClose(CloseEventArgs e)
         {
             if(_camera == null) return;
-            _logger.Info($"Client disconnected from {_camera?.Name}");
+            _logger.Info($"Client disconnected from {_camera?.Name}  error: {e.Reason}");
+
+            //if (!string.IsNullOrEmpty(e.Reason))
+            //{
+            //    try
+            //    {
+            //        Worker._webSocketServer.RemoveWebSocketService(_camera.Route);
+            //        Context.WebSocket.Close();
+            //        Thread.Sleep(2000);
+            //        Worker._webSocketServer.AddWebSocketService<StreamSocket>(_camera.Route, socket =>
+            //        {
+            //            socket.OriginValidator = origin =>
+            //            {
+            //                return true;
+            //            };
+            //            socket.Initialize(_camera);
+            //        });
+            //        Worker._webSocketServer.Start();
+            //    }
+            //    catch (Exception ex)
+            //    {
+            //        _logger.Error($"Failed to stop FFmpeg for {_camera.Name}: {ex.Message}");
+            //    }
+            //}
         }
     }
 
@@ -220,6 +446,12 @@ namespace LocalServiceStreaming
         {
             try
             {
+                //var service = new MonitoringSocket();
+                //var info = service.GetSystemInfo();
+                //var json = JsonConvert.SerializeObject(info);
+                //_logger.Info($"Sending system info: {json}");
+
+
                 await InstallFFMpeg();
                 var cams = new[]
                 {
@@ -272,6 +504,19 @@ namespace LocalServiceStreaming
                 _logger.Info($"Started on ws://localhost:{ConstantVariable.websocketPort}/streaming  to start the streaming");
 
                 #endregion
+
+                #region Starting the WebSocket server for system monitoring
+
+                _webSocketServer.AddWebSocketService<MonitoringSocket>("/monitoring", socket =>
+                {
+                    socket.OriginValidator = origin =>
+                    {
+                        return true;
+                    };
+                });
+
+                #endregion
+
 
                 #region starting the WebSocket server for playback
 
@@ -332,11 +577,11 @@ namespace LocalServiceStreaming
             }
         }
 
-        internal static void StartWebSocketServer(CameraStream cam, CancellationToken cancellationToken)
+        internal static void StartWebSocketServer(CameraStream cam, string resolution, CancellationToken cancellationToken)
         {
             try
             {
-                StartFFmpegStream(cam);
+                StartFFmpegStream(cam, resolution);
 
                 _webSocketServer.AddWebSocketService<StreamSocket>(cam.Route, socket =>
                 {
@@ -356,7 +601,7 @@ namespace LocalServiceStreaming
             }
         }
 
-        internal static void StartFFmpegStream(CameraStream cam, bool isPlayback = false)
+        internal static void StartFFmpegStream(CameraStream cam, string resolution = "1280x720", bool isPlayback = false)
         {
             // URL-encode the password and use TCP transport
             var encodedUrl = cam.Url;
@@ -366,7 +611,7 @@ namespace LocalServiceStreaming
                 ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
                         "-f mpegts -codec:v mpeg1video " +
                         "-q:v 5 -r 23.976 -bf 0 " +
-                        "-s 1280x720 " +
+                        $"-s {resolution} " +
                         "-loglevel warning -fflags nobuffer -err_detect ignore_err " +
                         "-";
 
@@ -379,7 +624,7 @@ namespace LocalServiceStreaming
 
             }
             else
-                ffmpegArgs = $"-i \"{encodedUrl}\" -f mpegts -codec:v mpeg1video -q:v 5 -r 24 -bf 0 -s 1280x720 -";
+                ffmpegArgs = $"-i \"{encodedUrl}\" -f mpegts -codec:v mpeg1video -q:v 5 -r 24 -bf 0 -s {resolution} -";
 
                 //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
                 //                 "-f mpegts -codec:v mpeg1video " +
@@ -415,22 +660,26 @@ namespace LocalServiceStreaming
                     },
                     EnableRaisingEvents = true
                 };
-
+            bool errorStream = false;
             cam.FfmpegProcess.ErrorDataReceived += (sender, e) =>
             {
                 if (!string.IsNullOrEmpty(e.Data) &&
                     !e.Data.Contains("deprecated pixel format") &&
                     !e.Data.Contains("Last message repeated"))
                     _logger.Error($"[FFmpeg] {cam.Name}: {e.Data}");
+
+                if(e.Data !=null && e.Data.Contains("Unknown error"))
+                    errorStream = true;
             };
 
             cam.FfmpegProcess.Exited += (sender, e) =>
             {
                 _logger.Error($"[FFmpeg] {cam.Name} process exited with code {cam.FfmpegProcess.ExitCode}");
-                if (cam.FfmpegProcess.ExitCode == 0)
+                if (cam.FfmpegProcess.ExitCode == 0 || (errorStream && cam.FfmpegProcess.ExitCode == -1))
+                {
                     StartFFmpegStream(cam);
-                //_cams.Remove(cam);
-                // Optional: Add restart logic here
+                    errorStream=false;
+                }
             };
 
             try
