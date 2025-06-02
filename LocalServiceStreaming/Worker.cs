@@ -33,7 +33,7 @@ namespace LocalServiceStreaming
         protected override void OnOpen()
         {
             _logger.Info("Client connected to system monitoring");
-            _timer = new Timer(SendSystemInfo, null, 0, 5000); // every 5 seconds
+            _timer = new Timer(SendSystemInfo, null, 0, 10000); // every 10 seconds
         }
 
         private void SendSystemInfo(object state)
@@ -263,29 +263,58 @@ namespace LocalServiceStreaming
                     if (!string.IsNullOrEmpty(e.Data))
                     {
                         _semaphoreSlim.Wait();
-                        var jsonObject =JsonConvert.DeserializeObject<StreamModel>(e.Data);
-                        if (jsonObject != null)
+                        if (e.Data.Contains("starttime"))
                         {
-                            var password = AesEncryption.Decrypt(jsonObject.Password);
-                            var obj = new CameraStream
+                            var jsonObject = JsonConvert.DeserializeObject<PlaybackModel>(e.Data);
+                            if (jsonObject != null)
                             {
-                                Name = jsonObject.RtspChannel,
-                                Route = $"/{jsonObject.RtspChannel}",
-                                Url = $"rtsp://{jsonObject.Username}:{password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/Channels/{jsonObject.RtspChannel}/",
-                                //Url = $"rtsp://admin:{jsonObject.Password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/Channels/{jsonObject.RtspChannel}/",
-                            };
-                            _logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
-                            if (!Worker._cams.Any(c => c.Route == obj.Route))
-                            {
-                                Worker.StartWebSocketServer(obj,jsonObject.Resolution, CancellationToken.None);
-                                _semaphoreSlim.Release();
-                            }
-                            else
-                            {
-                                _logger.Info($"Stream for {obj.Name} already running.");
-                                _semaphoreSlim.Release();
+                                var password = AesEncryption.Decrypt(jsonObject.Password);
+                                var obj = new CameraStream
+                                {
+                                    Name = jsonObject.RtspChannel,
+                                    Route = $"/playback/{jsonObject.RtspChannel}",
+                                    Url = $"rtsp://{jsonObject.Username}:{password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/tracks/{jsonObject.RtspChannel}?starttime={jsonObject.StartTime}",
+                                };
+                                _logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
+                                if (!Worker._cams.Any(c => c.Route == obj.Route))
+                                {
+                                    Worker.StartWebSocketServer(obj, jsonObject.Resolution, CancellationToken.None);
+                                    _semaphoreSlim.Release();
+                                }
+                                else
+                                {
+                                    _logger.Info($"Stream for {obj.Name} already running.");
+                                    _semaphoreSlim.Release();
+                                }
                             }
                         }
+                        else
+                        {
+                            var jsonObject = JsonConvert.DeserializeObject<StreamModel>(e.Data);
+                            if (jsonObject != null)
+                            {
+                                var password = AesEncryption.Decrypt(jsonObject.Password);
+                                var obj = new CameraStream
+                                {
+                                    Name = jsonObject.RtspChannel,
+                                    Route = $"/{jsonObject.RtspChannel}",
+                                    Url = $"rtsp://{jsonObject.Username}:{password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/Channels/{jsonObject.RtspChannel}/",
+                                    //Url = $"rtsp://admin:{jsonObject.Password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/Channels/{jsonObject.RtspChannel}/",
+                                };
+                                _logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
+                                if (!Worker._cams.Any(c => c.Route == obj.Route))
+                                {
+                                    Worker.StartWebSocketServer(obj, jsonObject.Resolution, CancellationToken.None);
+                                    _semaphoreSlim.Release();
+                                }
+                                else
+                                {
+                                    _logger.Info($"Stream for {obj.Name} already running.");
+                                    _semaphoreSlim.Release();
+                                }
+                            }
+                        }
+                        
                     }
                 }
                 catch (Exception ex)
@@ -354,13 +383,14 @@ namespace LocalServiceStreaming
             lock (_camera.Clients)
             {
                 _camera.Clients.Remove(this);
-            }
-            if (_camera.Clients.Count == 0)
-            {
-                _logger.Info($"No clients left for {_camera.Name}, stopping FFmpeg.");
-                _camera.FfmpegProcess?.Kill(true);
-                Worker._cams.RemoveAll(c => c.Name == _camera.Name);
-                Worker._webSocketServer.RemoveWebSocketService(_camera.Route);
+                if (_camera.Clients.Count == 0)
+                {
+                    _logger.Info($"No clients left for {_camera.Name}, stopping FFmpeg.");
+                    //_camera.FfmpegProcess?.Kill(true);
+                    //Worker._cams.RemoveAll(c => c.Name == _camera.Name);
+                    //Worker._webSocketServer.RemoveWebSocketService(_camera.Route);
+                }
+
             }
 
             _logger.Info($"Client disconnected from {_camera?.Name}  error: {e.Reason}");
@@ -493,40 +523,10 @@ namespace LocalServiceStreaming
 
 
                 await InstallFFMpeg();
-                var cams = new[]
-                {
-                    new CameraStream {
-                        Name = "cam1",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/202/",
-                        Route = "/101"
-                    },
-                    new CameraStream {
-                        Name = "cam2",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/101/",
-                        Route = "/102"
-                    },
-                    new CameraStream {
-                        Name = "cam3",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/302/",
-                        Route = "/201"
-                    },
-                     new CameraStream {
-                        Name = "cam4",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/202/",
-                        Route = "/202"
-                    },
-                    new CameraStream {
-                        Name = "cam5",
-                        Url = "rtsp://admin:tech@9900@106.51.129.154:554/Streaming/Channels/101/",
-                        Route = "/301"
-                    }
-                };
-
-                //_cams.AddRange(cams);
 
                 // Start HTTP server
-                HttpRequestHandler.StartHttpServer(ConstantVariable.LocalPort);
-                _logger.Info("HTTP Server started on port 8080");
+                //HttpRequestHandler.StartHttpServer(ConstantVariable.LocalPort);
+                //_logger.Info($"HTTP Server started on port {ConstantVariable.LocalPort}");
 
                 // Start WebSocket server
                 _webSocketServer = new WebSocketServer(ConstantVariable.websocketPort);
@@ -585,26 +585,6 @@ namespace LocalServiceStreaming
                 _logger.Info($"WebSocket Server started on port {ConstantVariable.websocketPort}");
 
 
-                #region Hardcoded just for testing
-                //try
-                //{
-                //    var websoc = new WebSocketSharp.WebSocket("ws://localhost:9898/streaming/");
-                //    websoc.Connect();
-                //    var data = new List<string>
-                //    {
-                //        $"{{\"ip\":\"106.51.129.154\",\"port\":554,\"username\":\"admin\",\"password\":\"tech@9900\",\"RtspChannel\":\"101\",\"ChannelId\":101,\"resolution\":\"1280x720\"}}",
-                //        $"{{\"ip\":\"106.51.129.154\",\"port\":554,\"username\":\"admin\",\"password\":\"tech@9900\",\"RtspChannel\":\"201\",\"ChannelId\":201,\"resolution\":\"1280x720\"}}",
-                //        $"{{\"ip\":\"106.51.129.154\",\"port\":554,\"username\":\"admin\",\"password\":\"tech@9900\",\"RtspChannel\":\"301\",\"ChannelId\":301,\"resolution\":\"1280x720\"}}",
-                //    };
-                //    foreach (var item in data)
-                //    {
-                //        websoc.Send(item);
-                //    }
-                //}
-                //catch (Exception ex)
-                //{
-                //}
-                #endregion
                 while (!stoppingToken.IsCancellationRequested)
                 {
                     await Task.Delay(1000, stoppingToken);
@@ -617,11 +597,11 @@ namespace LocalServiceStreaming
             }
         }
 
-        internal static void StartWebSocketServer(CameraStream cam, string resolution, CancellationToken cancellationToken)
+        internal static void StartWebSocketServer(CameraStream cam, string resolution, CancellationToken cancellationToken, bool isplayback = false)
         {
             try
             {
-                StartFFmpegStream(cam, resolution);
+                StartFFmpegStream(cam, resolution, isPlayback: isplayback);
 
                 _webSocketServer.AddWebSocketService<StreamSocket>(cam.Route, socket =>
                 {
@@ -656,25 +636,9 @@ namespace LocalServiceStreaming
                         $"-s {resolution} " +
                         "-loglevel warning -fflags nobuffer -err_detect ignore_err " +
                         "-";
-
-                //ffmpegArgs = $"-rtsp_transport tcp -timeout 5000000 -re -i \"{encodedUrl}\" " +
-                //            "-f mpegts -codec:v mpeg1video " +
-                //            "-q:v 5 -r 23.976 -bf 0 " +
-                //            "-s 1280x720 " +
-                //            "-loglevel warning -fflags nobuffer -err_detect ignore_err -";
-
-
             }
             else
                 ffmpegArgs = $"-i \"{encodedUrl}\" -f mpegts -codec:v mpeg1video -q:v 5 -r 24 -bf 0 -s {resolution} -";
-
-                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-                //                 "-f mpegts -codec:v mpeg1video " +
-                //                 "-q:v 1 -r 30 -bf 2 " +
-                //                 "-g 60 -b:v 5000k -maxrate 5000k -bufsize 10000k " +
-                //                 "-s 1920x1080 " +
-                //                 "-preset veryfast " +
-                //                 "-loglevel warning -";
 
 
                 //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
@@ -752,7 +716,7 @@ namespace LocalServiceStreaming
                     {
                         foreach (var client in camera.Clients.ToList())
                         {
-                            client.SendToClient(data); // Now uses your public method
+                            client.SendToClient(data);
                         }
                     }
 

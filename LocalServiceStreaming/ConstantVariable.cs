@@ -4,7 +4,7 @@
     {
         public static int BoundCapacity = 1;
         public static int websocketPort = 9898;
-        public static int LocalPort = 8080;
+        public static int LocalPort = 8484;
         public static string FFMPegPath { get; set; }
 
         public static string GetFFMPegPath()
