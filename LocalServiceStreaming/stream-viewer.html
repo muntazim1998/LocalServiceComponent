@@ -233,7 +233,7 @@
             console.log("clicked");
             socket.onmessage = (event) => {
                 const data = JSON.parse(event.data);
-                console.log("TotalCPU:", data.totalcpu, "TotalRAM:", data.totalram, "   FfmpegMemory:", data.ffmpegMemoryUsage, "   FfmpegCPU:", data.ffmpegcpuUsage);
+                console.log("TotalCPU:", data.totalcpu, "TotalRAM:", data.totalram, "   FfmpegMemory:", data.ffmpegmemoryusage, "   FfmpegCPU:", data.ffmpegcpuusage);
             };
         }
 

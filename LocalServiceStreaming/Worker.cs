@@ -5,6 +5,7 @@ using System.Management;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using WebSocketSharp;
 using WebSocketSharp.Server;
 namespace LocalServiceStreaming
@@ -16,6 +17,7 @@ namespace LocalServiceStreaming
         //public int Port { get; set; }
         public string Route { get; set; }
         public Process FfmpegProcess { get; set; }
+        public List<StreamSocket> Clients { get; set; } = new List<StreamSocket>();
     }
 
 
@@ -57,7 +59,7 @@ namespace LocalServiceStreaming
             var totalRam = GetMemoryUsage();
             var ffmpegMemoryusage = GetProcessMemoryUsage("ffmpeg");
             var ffmpegcpu_usage = GetProcessCpuUsage("ffmpeg");
-            return new { totalcpu = cpuUsage, totalram = totalRam , ffmpegMemoryUsage= ffmpegMemoryusage, ffmpegcpuUsage = ffmpegcpu_usage };
+            return new { totalcpu = cpuUsage, totalram = totalRam , ffmpegmemoryusage= ffmpegMemoryusage, ffmpegcpuusage = ffmpegcpu_usage };
         }
         private static string GetMemoryUsage()
         {
@@ -224,6 +226,7 @@ namespace LocalServiceStreaming
         private CameraStream _camera;
         private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
         private static SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(ConstantVariable.BoundCapacity, ConstantVariable.BoundCapacity);
+        private static SemaphoreSlim _semaphoreClosing = new SemaphoreSlim(ConstantVariable.BoundCapacity, ConstantVariable.BoundCapacity);
         public void Initialize(CameraStream camera)
         {
             _camera = camera;
@@ -237,6 +240,7 @@ namespace LocalServiceStreaming
 
                 try
                 {
+                    _semaphoreClosing.Wait();
                     _camera.FfmpegProcess?.Kill(true);
                     Worker._cams?.RemoveAll(c => c.Name == _camera.Name);
                     // Close the WebSocket session
@@ -246,6 +250,10 @@ namespace LocalServiceStreaming
                 catch (Exception ex)
                 {
                     _logger.Error($"Failed to stop FFmpeg for {_camera.Name}: {ex.Message}");
+                }
+                finally
+                {
+                    _semaphoreClosing.Release();
                 }
             }
             else
@@ -285,13 +293,33 @@ namespace LocalServiceStreaming
                 }
             }
         }
+        public void SendToClient(byte[] data)
+        {
+            try
+            {
+                if (State == WebSocketState.Open)
+                {
+                    Send(data); // This works because it's within the same class
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Failed to send data to client for {_camera?.Name}: {ex.Message}");
+            }
+        }
 
         protected override void OnOpen()
         {
-            if(_camera == null) return;
+            if (_camera == null) return;
+
+            lock (_camera.Clients)
+            {
+                _camera.Clients.Add(this);
+            }
+
             _logger.Info($"Client connected to {_camera.Name}");
-            Task.Run(() => PipeFfmpegToWebSocket());
         }
+
 
         private async Task PipeFfmpegToWebSocket()
         {
@@ -323,6 +351,18 @@ namespace LocalServiceStreaming
         protected override void OnClose(CloseEventArgs e)
         {
             if(_camera == null) return;
+            lock (_camera.Clients)
+            {
+                _camera.Clients.Remove(this);
+            }
+            if (_camera.Clients.Count == 0)
+            {
+                _logger.Info($"No clients left for {_camera.Name}, stopping FFmpeg.");
+                _camera.FfmpegProcess?.Kill(true);
+                Worker._cams.RemoveAll(c => c.Name == _camera.Name);
+                Worker._webSocketServer.RemoveWebSocketService(_camera.Route);
+            }
+
             _logger.Info($"Client disconnected from {_camera?.Name}  error: {e.Reason}");
 
             //if (!string.IsNullOrEmpty(e.Reason))
@@ -594,6 +634,8 @@ namespace LocalServiceStreaming
                 _webSocketServer.Start();
                 _cams.Add(cam);
                 _logger.Info($"Started {cam.Name} on ws://localhost:{ConstantVariable.websocketPort}{cam.Route}");
+                Task.Run(() => PipeFfmpegToWebSocket(cam, cancellationToken));
+
             }
             catch (Exception ex)
             {
@@ -692,6 +734,36 @@ namespace LocalServiceStreaming
                 _logger.Error($"[Error] Failed to start {cam.Name}: {ex.Message}");
             }
         }
+
+        private static async Task PipeFfmpegToWebSocket(CameraStream camera, CancellationToken cancellationToken)
+        {
+            var buffer = new byte[8192];
+            int bytesRead;
+
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested &&
+                       camera.FfmpegProcess != null &&
+                       (bytesRead = await camera.FfmpegProcess.StandardOutput.BaseStream.ReadAsync(buffer, 0, buffer.Length)) > 0)
+                {
+                    byte[] data = buffer.Take(bytesRead).ToArray();
+
+                    lock (camera.Clients)
+                    {
+                        foreach (var client in camera.Clients.ToList())
+                        {
+                            client.SendToClient(data); // Now uses your public method
+                        }
+                    }
+
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Error($"Error broadcasting stream for {camera.Name}: {ex.Message}");
+            }
+        }
+
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
             _logger.Info("Stopping servers...");
