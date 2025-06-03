@@ -32,7 +32,7 @@ namespace LocalServiceStreaming
         private static string TotalMemory = GetTotalMemory();
         protected override void OnOpen()
         {
-            _logger.Info("Client connected to system monitoring");
+            Logger.Info("Client connected to system monitoring");
             _timer = new Timer(SendSystemInfo, null, 0, 10000); // every 10 seconds
         }
 
@@ -44,7 +44,7 @@ namespace LocalServiceStreaming
                 {
                     var info = GetSystemInfo();
                     var json = JsonConvert.SerializeObject(info);
-                    _logger.Info($"Sending system info: {json}");
+                    //_logger.Info($"Sending system info: {json}");
                     Send(json);
                 }
             }
@@ -233,10 +233,10 @@ namespace LocalServiceStreaming
         }
         protected override void OnMessage(MessageEventArgs e)
         {
-            _logger.Info($"Received message from client: {e.Data}");
+            Logger.Info($"Received message from client: {e.Data}");
             if (e.Data == "stop")
             {
-                _logger.Info($"Stopping stream for {_camera.Name} as requested by client.");
+                Logger.Info($"Stopping stream for {_camera.Name} as requested by client.");
 
                 try
                 {
@@ -249,7 +249,7 @@ namespace LocalServiceStreaming
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Failed to stop FFmpeg for {_camera.Name}: {ex.Message}");
+                    Logger.Error($"Failed to stop FFmpeg for {_camera.Name}: {ex.Message}");
                 }
                 finally
                 {
@@ -275,7 +275,7 @@ namespace LocalServiceStreaming
                                     Route = $"/playback/{jsonObject.RtspChannel}",
                                     Url = $"rtsp://{jsonObject.Username}:{password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/tracks/{jsonObject.RtspChannel}?starttime={jsonObject.StartTime}",
                                 };
-                                _logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
+                                Logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
                                 if (!Worker._cams.Any(c => c.Route == obj.Route))
                                 {
                                     Worker.StartWebSocketServer(obj, jsonObject.Resolution, CancellationToken.None);
@@ -283,7 +283,7 @@ namespace LocalServiceStreaming
                                 }
                                 else
                                 {
-                                    _logger.Info($"Stream for {obj.Name} already running.");
+                                    Logger.Info($"Stream for {obj.Name} already running.");
                                     _semaphoreSlim.Release();
                                 }
                             }
@@ -301,7 +301,7 @@ namespace LocalServiceStreaming
                                     Url = $"rtsp://{jsonObject.Username}:{password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/Channels/{jsonObject.RtspChannel}/",
                                     //Url = $"rtsp://admin:{jsonObject.Password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/Channels/{jsonObject.RtspChannel}/",
                                 };
-                                _logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
+                                Logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
                                 if (!Worker._cams.Any(c => c.Route == obj.Route))
                                 {
                                     Worker.StartWebSocketServer(obj, jsonObject.Resolution, CancellationToken.None);
@@ -309,7 +309,7 @@ namespace LocalServiceStreaming
                                 }
                                 else
                                 {
-                                    _logger.Info($"Stream for {obj.Name} already running.");
+                                    Logger.Info($"Stream for {obj.Name} already running.");
                                     _semaphoreSlim.Release();
                                 }
                             }
@@ -319,6 +319,7 @@ namespace LocalServiceStreaming
                 }
                 catch (Exception ex)
                 {
+                    _semaphoreSlim.Release();
                 }
             }
         }
@@ -328,12 +329,12 @@ namespace LocalServiceStreaming
             {
                 if (State == WebSocketState.Open)
                 {
-                    Send(data); // This works because it's within the same class
+                    Send(data);
                 }
             }
             catch (Exception ex)
             {
-                _logger.Error($"Failed to send data to client for {_camera?.Name}: {ex.Message}");
+                Logger.Error($"Failed to send data to client for {_camera?.Name}: {ex.Message}");
             }
         }
 
@@ -346,7 +347,7 @@ namespace LocalServiceStreaming
                 _camera.Clients.Add(this);
             }
 
-            _logger.Info($"Client connected to {_camera.Name}");
+            Logger.Info($"Client connected to {_camera.Name}");
         }
 
 
@@ -366,14 +367,14 @@ namespace LocalServiceStreaming
                         }
                         else
                         {
-                            _logger.Error($"WebSocket connection closed for {_camera.Name}");
+                            Logger.Error($"WebSocket connection closed for {_camera.Name}");
                             break;
                         }
                     }
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error piping {_camera.Name} stream: {ex.Message}");
+                Logger.Error($"Error piping {_camera.Name} stream: {ex.Message}");
             }
         }
 
@@ -393,7 +394,7 @@ namespace LocalServiceStreaming
 
             }
 
-            _logger.Info($"Client disconnected from {_camera?.Name}  error: {e.Reason}");
+            Logger.Info($"Client disconnected from {_camera?.Name}  error: {e.Reason}");
 
             //if (!string.IsNullOrEmpty(e.Reason))
             //{
@@ -541,7 +542,7 @@ namespace LocalServiceStreaming
                         return true;
                     };
                 });
-                _logger.Info($"Started on ws://localhost:{ConstantVariable.websocketPort}/streaming  to start the streaming");
+                Logger.Info($"Started on ws://localhost:{ConstantVariable.websocketPort}/streaming  to start the streaming");
 
                 #endregion
 
@@ -582,7 +583,7 @@ namespace LocalServiceStreaming
 
                 #endregion
                 _webSocketServer.Start();
-                _logger.Info($"WebSocket Server started on port {ConstantVariable.websocketPort}");
+                Logger.Info($"WebSocket Server started on port {ConstantVariable.websocketPort}");
 
 
                 while (!stoppingToken.IsCancellationRequested)
@@ -592,7 +593,7 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Error starting servers");
+                Logger.Error("Error starting servers", ex);
                 throw;
             }
         }
@@ -613,13 +614,13 @@ namespace LocalServiceStreaming
                 });
                 _webSocketServer.Start();
                 _cams.Add(cam);
-                _logger.Info($"Started {cam.Name} on ws://localhost:{ConstantVariable.websocketPort}{cam.Route}");
+                Logger.Info($"Started {cam.Name} on ws://localhost:{ConstantVariable.websocketPort}{cam.Route}");
                 Task.Run(() => PipeFfmpegToWebSocket(cam, cancellationToken));
 
             }
             catch (Exception ex)
             {
-                _logger.Error(ex, "Error starting WebSocket server");
+                Logger.Error( "Error starting WebSocket server", ex);
             }
         }
 
@@ -680,7 +681,7 @@ namespace LocalServiceStreaming
 
             cam.FfmpegProcess.Exited += (sender, e) =>
             {
-                _logger.Error($"[FFmpeg] {cam.Name} process exited with code {cam.FfmpegProcess.ExitCode}");
+                Logger.Error($"[FFmpeg] {cam.Name} process exited with code {cam.FfmpegProcess.ExitCode}");
                 if (cam.FfmpegProcess.ExitCode == 0 || (errorStream && cam.FfmpegProcess.ExitCode == -1))
                 {
                     StartFFmpegStream(cam);
@@ -695,7 +696,7 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                _logger.Error($"[Error] Failed to start {cam.Name}: {ex.Message}");
+                Logger.Error($"[Error] Failed to start {cam.Name}: {ex.Message}");
             }
         }
 
@@ -724,13 +725,13 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                _logger.Error($"Error broadcasting stream for {camera.Name}: {ex.Message}");
+                Logger.Error($"Error broadcasting stream for {camera.Name}: {ex.Message}");
             }
         }
 
         public override async Task StopAsync(CancellationToken cancellationToken)
         {
-            _logger.Info("Stopping servers...");
+            Logger.Info("Stopping servers...");
 
             // Correctly stop the WebSocketServer
             if (_webSocketServer != null && _webSocketServer.IsListening)
@@ -742,11 +743,11 @@ namespace LocalServiceStreaming
                 try
                 {
                     cam.FfmpegProcess?.Kill();
-                    _logger.Info($"Stopped {cam.Name}");
+                    Logger.Info($"Stopped {cam.Name}");
                 }
                 catch (Exception ex)
                 {
-                    _logger.Error($"Error stopping {cam.Name}: {ex.Message}");
+                    Logger.Error($"Error stopping {cam.Name}: {ex.Message}");
                 }
             }
             await base.StopAsync(cancellationToken);
