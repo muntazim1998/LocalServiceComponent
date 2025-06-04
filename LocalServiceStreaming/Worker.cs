@@ -1,11 +1,10 @@
 ﻿using LocalServiceStreaming.Models;
-using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Management;
 using System.Net;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Threading;
+using System.Text.Json;
 using WebSocketSharp;
 using WebSocketSharp.Server;
 namespace LocalServiceStreaming
@@ -25,7 +24,7 @@ namespace LocalServiceStreaming
     public class MonitoringSocket : WebSocketBehavior
     {
         private Timer _timer;
-        private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+   //     private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
         private static readonly PerformanceCounter CpuCounter = new PerformanceCounter("Processor", "% Processor Time", "_Total");
         private static readonly PerformanceCounter RamCounter = new PerformanceCounter("Memory", "Available MBytes");
         private static readonly PerformanceCounter DiskCounter = new PerformanceCounter("PhysicalDisk", "% Disk Time", "_Total");
@@ -43,7 +42,7 @@ namespace LocalServiceStreaming
                 if (State == WebSocketState.Open)
                 {
                     var info = GetSystemInfo();
-                    var json = JsonConvert.SerializeObject(info);
+                    var json = JsonSerializer.Serialize(info);
                     //_logger.Info($"Sending system info: {json}");
                     Send(json);
                 }
@@ -224,7 +223,7 @@ namespace LocalServiceStreaming
     public class StreamSocket : WebSocketBehavior
     {
         private CameraStream _camera;
-        private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+      //  private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
         private static SemaphoreSlim _semaphoreSlim = new SemaphoreSlim(ConstantVariable.BoundCapacity, ConstantVariable.BoundCapacity);
         private static SemaphoreSlim _semaphoreClosing = new SemaphoreSlim(ConstantVariable.BoundCapacity, ConstantVariable.BoundCapacity);
         public void Initialize(CameraStream camera)
@@ -265,7 +264,7 @@ namespace LocalServiceStreaming
                         _semaphoreSlim.Wait();
                         if (e.Data.Contains("starttime"))
                         {
-                            var jsonObject = JsonConvert.DeserializeObject<PlaybackModel>(e.Data);
+                            var jsonObject = JsonSerializer.Deserialize<PlaybackModel>(e.Data);
                             if (jsonObject != null)
                             {
                                 var password = AesEncryption.Decrypt(jsonObject.password);
@@ -290,7 +289,7 @@ namespace LocalServiceStreaming
                         }
                         else
                         {
-                            var jsonObject = JsonConvert.DeserializeObject<StreamModel>(e.Data);
+                            var jsonObject = JsonSerializer.Deserialize<StreamModel>(e.Data);
                             if (jsonObject != null)
                             {
                                 var password = AesEncryption.Decrypt(jsonObject.Password);
@@ -386,7 +385,7 @@ namespace LocalServiceStreaming
                 _camera.Clients.Remove(this);
                 if (_camera.Clients.Count == 0)
                 {
-                    _logger.Info($"No clients left for {_camera.Name}, stopping FFmpeg.");
+                    Logger.Info($"No clients left for {_camera.Name}, stopping FFmpeg.");
                     //_camera.FfmpegProcess?.Kill(true);
                     //Worker._cams.RemoveAll(c => c.Name == _camera.Name);
                     //Worker._webSocketServer.RemoveWebSocketService(_camera.Route);
@@ -483,7 +482,7 @@ namespace LocalServiceStreaming
 
     public class Worker : BackgroundService
     {
-        private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
+       // private static readonly NLog.Logger _logger = NLog.LogManager.GetCurrentClassLogger();
 
         public static WebSocketServer _webSocketServer;
         public static readonly List<CameraStream> _cams = new List<CameraStream>();
@@ -673,7 +672,7 @@ namespace LocalServiceStreaming
                 if (!string.IsNullOrEmpty(e.Data) &&
                     !e.Data.Contains("deprecated pixel format") &&
                     !e.Data.Contains("Last message repeated"))
-                    _logger.Error($"[FFmpeg] {cam.Name}: {e.Data}");
+                    Logger.Error($"[FFmpeg] {cam.Name}: {e.Data}");
 
                 if(e.Data !=null && e.Data.Contains("Unknown error"))
                     errorStream = true;
@@ -767,7 +766,7 @@ namespace LocalServiceStreaming
             }
             catch (Exception ex)
             {
-                _logger.Error($"GPU check failed: {ex.Message}");
+              //  _logger.Error($"GPU check failed: {ex.Message}");
             }
 
             return false;
@@ -778,14 +777,14 @@ namespace LocalServiceStreaming
 
             if (useGpu)
             {
-                _logger.Info("NVIDIA GPU found — using GPU acceleration.");
+                Logger.Info("NVIDIA GPU found — using GPU acceleration.");
                 return $"-hwaccel cuda -rtsp_transport tcp -re -i \"{encodedUrl}\" " +
                        "-f mpegts -codec:v h264_nvenc -pix_fmt yuv420p -preset fast " +
                        $"-r 25 -bf 0 -s {pixelFormat} -loglevel warning -";
             }
             else
             {
-                _logger.Info("No NVIDIA GPU — using software encoding.");
+                Logger.Info("No NVIDIA GPU — using software encoding.");
                 return $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
                        "-f mpegts -codec:v mpeg1video -q:v 5 -r 25 -bf 0 " +
                        $"-s {pixelFormat} -loglevel warning -";
