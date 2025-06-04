@@ -271,13 +271,13 @@ namespace LocalServiceStreaming
                                 var obj = new CameraStream
                                 {
                                     Name = jsonObject.playbackUrl,
-                                    Route = $"{jsonObject.playbackUrl}",
+                                    Route = $"{jsonObject.playbackUrl.Replace("?", "/").Replace("=", "/").Replace("&", "/")}",
                                     Url = $"rtsp://{jsonObject.username}:{password}@{jsonObject.ip}:{jsonObject.rtspPort}{jsonObject.playbackUrl}",
                                 };
                                 Logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
                                 if (!Worker._cams.Any(c => c.Route == obj.Route))
                                 {
-                                    Worker.StartWebSocketServer(obj, jsonObject.resolution, CancellationToken.None);
+                                    Worker.StartWebSocketServer(obj, jsonObject.resolution, CancellationToken.None, isplayback:true);
                                     _semaphoreSlim.Release();
                                 }
                                 else
@@ -638,22 +638,22 @@ namespace LocalServiceStreaming
                         "-";
             }
             else
-                ffmpegArgs = $"-i \"{encodedUrl}\" -f mpegts -codec:v mpeg1video -q:v 5 -r 24 -bf 0 -s {resolution} -";
+                ffmpegArgs = $"-i \"{encodedUrl}\" -f mpegts -codec:v mpeg1video -q:v 5 -r 23.976 -bf 0 -s {resolution} -";
 
 
-                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-                //     "-f mpegts -codec:v mpeg1video -q:v 6 -r 20 -bf 0 -s 1280x720 -threads 1 -loglevel warning -";
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //     "-f mpegts -codec:v mpeg1video -q:v 6 -r 20 -bf 0 -s 1280x720 -threads 1 -loglevel warning -";
 
-                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-                //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1280x720 -threads 2 -loglevel error -";
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1280x720 -threads 2 -loglevel error -";
 
-                //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
-                //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1920x1080 -loglevel error -";
-                //var ffmpegArgs = $"-rtsp_transport tcp -i \"{encodedUrl}\" " +
-                //        "-f mpegts -codec:v h264_nvenc -preset fast -b:v 2M " +
-                //        "-r 15 -s 640x360 -loglevel warning -";
+            //var ffmpegArgs = $"-rtsp_transport tcp -re -i \"{encodedUrl}\" " +
+            //             "-f mpegts -codec:v mpeg1video -q:v 2 -r 25 -bf 0 -s 1920x1080 -loglevel error -";
+            //var ffmpegArgs = $"-rtsp_transport tcp -i \"{encodedUrl}\" " +
+            //        "-f mpegts -codec:v h264_nvenc -preset fast -b:v 2M " +
+            //        "-r 15 -s 640x360 -loglevel warning -";
 
-                cam.FfmpegProcess = new Process
+            cam.FfmpegProcess = new Process
                 {
                     StartInfo = new ProcessStartInfo
                     {
@@ -672,7 +672,7 @@ namespace LocalServiceStreaming
                 if (!string.IsNullOrEmpty(e.Data) &&
                     !e.Data.Contains("deprecated pixel format") &&
                     !e.Data.Contains("Last message repeated"))
-                    Logger.Error($"[FFmpeg] {cam.Name}: {e.Data}");
+                    //Logger.Error($"[FFmpeg] {cam.Name}: {e.Data}");
 
                 if(e.Data !=null && e.Data.Contains("Unknown error"))
                     errorStream = true;

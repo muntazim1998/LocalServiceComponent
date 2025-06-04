@@ -5,7 +5,8 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <OutputType>WinExe</OutputType>
-    <UserSecretsId>dotnet-LocalServiceStreaming-c5deb6c3-cad6-4508-981b-08affa1d5c3c</UserSecretsId>
+	  <EnableWindowsService>true</EnableWindowsService>
+	  <UserSecretsId>dotnet-LocalServiceStreaming-c5deb6c3-cad6-4508-981b-08affa1d5c3c</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>
