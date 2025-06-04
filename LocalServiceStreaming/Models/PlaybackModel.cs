@@ -2,13 +2,11 @@
 {
     public class PlaybackModel
     {
-        public string IP { get; set; }
-        public int Port { get; set; }
-        public string Username { get; set; }
-        public string Password { get; set; }
-        public int ChannelId { get; set; }
-        public string RtspChannel { get; set; }
-        public string Resolution { get; set; }
-        public string StartTime { get; set; }
+        public string ip { get; set; }
+        public int rtspPort { get; set; }
+        public string username { get; set; }
+        public string password { get; set; }
+        public string resolution { get; set; }
+        public string playbackUrl { get; set; }
     }
 }

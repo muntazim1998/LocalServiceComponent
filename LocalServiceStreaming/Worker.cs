@@ -268,17 +268,17 @@ namespace LocalServiceStreaming
                             var jsonObject = JsonConvert.DeserializeObject<PlaybackModel>(e.Data);
                             if (jsonObject != null)
                             {
-                                var password = AesEncryption.Decrypt(jsonObject.Password);
+                                var password = AesEncryption.Decrypt(jsonObject.password);
                                 var obj = new CameraStream
                                 {
-                                    Name = jsonObject.RtspChannel,
-                                    Route = $"/playback/{jsonObject.RtspChannel}",
-                                    Url = $"rtsp://{jsonObject.Username}:{password}@{jsonObject.IP}:{jsonObject.Port}/Streaming/tracks/{jsonObject.RtspChannel}?starttime={jsonObject.StartTime}",
+                                    Name = jsonObject.playbackUrl,
+                                    Route = $"{jsonObject.playbackUrl}",
+                                    Url = $"rtsp://{jsonObject.username}:{password}@{jsonObject.ip}:{jsonObject.rtspPort}{jsonObject.playbackUrl}",
                                 };
                                 Logger.Info($"Received RTSP URL for {obj.Name}: {obj.Url}");
                                 if (!Worker._cams.Any(c => c.Route == obj.Route))
                                 {
-                                    Worker.StartWebSocketServer(obj, jsonObject.Resolution, CancellationToken.None);
+                                    Worker.StartWebSocketServer(obj, jsonObject.resolution, CancellationToken.None);
                                     _semaphoreSlim.Release();
                                 }
                                 else
